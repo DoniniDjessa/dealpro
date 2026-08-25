@@ -205,7 +205,7 @@ export function matchContactSearch(
     instagram: string | null
     tiktok: string | null
   },
-  query: SearchQuery
+  text: string
 ) {
   const blob = [
     item.name,
@@ -222,7 +222,8 @@ export function matchContactSearch(
   ]
     .filter(Boolean)
     .join(' ')
-  return textMatches(blob, query)
+  const terms = foldSearch(text).split(/[\s,;]+/).filter(Boolean)
+  return blobMatches(blob, terms)
 }
 
 export function matchAppointmentSearch(

@@ -1,10 +1,10 @@
 import { ScreenShell } from '@/components/ScreenShell'
 import { CardActions } from '@/components/CardActions'
-import { SearchBar } from '@/components/SearchBar'
+import { SimpleSearch } from '@/components/SimpleSearch'
 import { useFormDrawer } from '@/components/FormDrawer'
 import { useContacts, useDemands, useOffers } from '@/lib/hooks'
 import { deleteContact } from '@/lib/crm'
-import { EMPTY_SEARCH, matchContactSearch, searchIsActive, type SearchQuery } from '@/lib/search'
+import { matchContactSearch } from '@/lib/search'
 import { colors, fonts } from '@/lib/theme'
 import type { Contact } from '@/lib/types'
 import { ChevronDown, MapPin, MessageCircle, Phone } from 'lucide-react-native'
@@ -36,7 +36,7 @@ export default function ContactsScreen() {
   const offers = useOffers()
   const demands = useDemands()
   const { openForm, notifyChange } = useFormDrawer()
-  const [query, setQuery] = useState<SearchQuery>(EMPTY_SEARCH)
+  const [query, setQuery] = useState('')
   const [openId, setOpenId] = useState<string | null>(null)
 
   const filtered = useMemo(() => items.filter((item) => matchContactSearch(item, query)), [items, query])
@@ -49,15 +49,15 @@ export default function ContactsScreen() {
 
   return (
     <ScreenShell title="Contacts" loading={loading} error={error}>
-      <SearchBar value={query} onChange={setQuery} />
+      <SimpleSearch value={query} onChange={setQuery} placeholder="Rechercher un contact…" />
       {filtered.length === 0 ? (
         <YStack alignItems="center" paddingVertical={48} gap={12}>
           <Text style={{ ...fonts.semibold, color: colors.muted, textAlign: 'center' }}>
-            {searchIsActive(query)
+            {query.trim()
               ? 'Aucun contact trouvé pour cette recherche'
               : 'Relie un contact du répertoire à une offre, ou crée-le ici.'}
           </Text>
-          {!searchIsActive(query) ? (
+          {!query.trim() ? (
             <Pressable onPress={() => openForm('contact')}>
               <Text style={{ ...fonts.bold, color: colors.emerald }}>Nouveau contact</Text>
             </Pressable>
