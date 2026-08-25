@@ -42,36 +42,27 @@ export function OfferCard({
               {item.important ? <Star size={12} color={colors.orange} fill={colors.orange} /> : null}
             </XStack>
             <Text style={{ ...fonts.semibold, fontSize: 16, color: colors.black, marginTop: 4 }}>{item.title}</Text>
-            <Text style={{ ...fonts.medium, fontSize: 12, color: colors.muted, marginTop: 4 }}>
-              {[item.location, item.rooms ? `${item.rooms} pièce${item.rooms > 1 ? 's' : ''}` : null]
-                .filter(Boolean)
-                .join(' · ') || 'Lieu non renseigné'}
-            </Text>
           </YStack>
           <YStack alignItems="flex-end">
             <Text style={{ ...fonts.extra, fontSize: 16, color: colors.black }}>{formatFcfa(item.price)}</Text>
           </YStack>
         </XStack>
-        <XStack marginTop={12} gap={8} alignItems="center" justifyContent="space-between">
-          <XStack gap={8} flex={1} flexWrap="wrap">
-            <YStack backgroundColor={colors.violetSoft} borderRadius={12} paddingHorizontal={10} paddingVertical={4}>
-              <Text style={{ ...fonts.semibold, fontSize: 11, color: verif.color }}>{verif.label}</Text>
-            </YStack>
-            <YStack backgroundColor={colors.bg} borderRadius={12} paddingHorizontal={10} paddingVertical={4}>
-              <Text style={{ ...fonts.medium, fontSize: 11, color: colors.muted }}>Fiabilité {item.reliability}/100</Text>
-            </YStack>
-          </XStack>
+        <XStack marginTop={8} gap={8} alignItems="center" justifyContent="space-between">
+          <Text flex={1} style={{ ...fonts.medium, fontSize: 12, color: colors.muted }}>
+            {[item.location, item.rooms ? `${item.rooms} pièce${item.rooms > 1 ? 's' : ''}` : null]
+              .filter(Boolean)
+              .join(' · ') || 'Lieu non renseigné'}
+          </Text>
           {onEdit && onDelete ? <CardActions onEdit={onEdit} onDelete={onDelete} /> : null}
         </XStack>
-        {(item.tags || []).length ? (
-          <XStack flexWrap="wrap" gap={6} marginTop={10}>
-            {(item.tags || []).slice(0, 4).map((tag) => (
-              <YStack key={tag} backgroundColor={colors.emeraldSoft} borderRadius={10} paddingHorizontal={8} paddingVertical={3}>
-                <Text style={{ ...fonts.medium, fontSize: 10, color: colors.emerald }}>{tag}</Text>
-              </YStack>
-            ))}
-          </XStack>
-        ) : null}
+        <XStack marginTop={12} gap={8} alignItems="center" flexWrap="wrap">
+          <YStack backgroundColor={colors.violetSoft} borderRadius={12} paddingHorizontal={10} paddingVertical={4}>
+            <Text style={{ ...fonts.semibold, fontSize: 11, color: verif.color }}>{verif.label}</Text>
+          </YStack>
+          <YStack backgroundColor={colors.bg} borderRadius={12} paddingHorizontal={10} paddingVertical={4}>
+            <Text style={{ ...fonts.medium, fontSize: 11, color: colors.muted }}>Fiabilité {item.reliability}/100</Text>
+          </YStack>
+        </XStack>
       </YStack>
     </Pressable>
   )
@@ -96,23 +87,23 @@ export function DemandCard({
   return (
     <Pressable onPress={onPress}>
       <YStack backgroundColor={colors.card} borderRadius={24} padding={16} marginBottom={12} borderWidth={1} borderColor={colors.border}>
-        <XStack justifyContent="space-between" alignItems="flex-start" gap={8}>
-          <YStack flex={1}>
-            <Text style={{ ...fonts.medium, fontSize: 11, color: colors.indigo }}>
-              {cat.emoji} {cat.label}
-            </Text>
-            <Text style={{ ...fonts.semibold, fontSize: 16, color: colors.black, marginTop: 4 }}>{item.title}</Text>
-            <Text style={{ ...fonts.medium, fontSize: 12, color: colors.muted, marginTop: 4 }}>
+        <YStack>
+          <Text style={{ ...fonts.medium, fontSize: 11, color: colors.indigo }}>
+            {cat.emoji} {cat.label}
+          </Text>
+          <Text style={{ ...fonts.semibold, fontSize: 16, color: colors.black, marginTop: 4 }}>{item.title}</Text>
+          <XStack marginTop={8} gap={8} alignItems="center" justifyContent="space-between">
+            <Text flex={1} style={{ ...fonts.medium, fontSize: 12, color: colors.muted }}>
               {item.location || 'Zone libre'} · {budget}
             </Text>
-            {item.contact?.name ? (
-              <Text style={{ ...fonts.semibold, fontSize: 12, color: colors.orange, marginTop: 6 }}>
-                Client · {item.contact.name}
-              </Text>
-            ) : null}
-          </YStack>
-          {onEdit && onDelete ? <CardActions onEdit={onEdit} onDelete={onDelete} /> : null}
-        </XStack>
+            {onEdit && onDelete ? <CardActions onEdit={onEdit} onDelete={onDelete} /> : null}
+          </XStack>
+          {item.contact?.name ? (
+            <Text style={{ ...fonts.semibold, fontSize: 12, color: colors.orange, marginTop: 6 }}>
+              Client · {item.contact.name}
+            </Text>
+          ) : null}
+        </YStack>
       </YStack>
     </Pressable>
   )

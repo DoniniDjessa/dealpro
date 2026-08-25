@@ -3,8 +3,10 @@ import {
   EMPTY_SEARCH,
   POPULAR_TAGS,
   PRICE_PRESETS,
+  parseSearchGroups,
   searchHasExtras,
   splitSearchTerms,
+  foldSearch,
   type SearchFeature,
   type SearchQuery,
 } from '@/lib/search'
@@ -17,7 +19,7 @@ import { Text, XStack, YStack } from 'tamagui'
 export function SearchBar({
   value,
   onChange,
-  placeholder = 'Rechercher… (séparez par des virgules)',
+  placeholder,
   features = [],
 }: {
   value: SearchQuery
@@ -26,16 +28,28 @@ export function SearchBar({
   features?: SearchFeature[]
 }) {
   const [open, setOpen] = useState(false)
+  const groups = useMemo(() => parseSearchGroups(value.text, value.apart), [value.text, value.apart])
   const terms = useMemo(() => splitSearchTerms(value.text), [value.text])
   const extras = searchHasExtras(value)
   const showFilters = features.length > 0
+  const hint = value.apart
+    ? 'À part : groupes séparés par ;  —  cocody, 3 pièces ; marcory, 2 pièces'
+    : 'Ensemble : virgules = tous les mots —  cocody, 3 pièces, titré'
+  const inputPlaceholder =
+    placeholder ||
+    (value.apart ? 'cocody, 3 pièces ; marcory, 2 pièces' : 'Rechercher… (séparez par des virgules)')
 
   const removeTerm = (term: string) => {
     const next = value.text
       .split(',')
       .map((item) => item.trim())
-      .filter((item) => item && item.toLowerCase() !== term)
+      .filter((item) => item && foldSearch(item) !== term)
     onChange({ ...value, text: next.join(', ') })
+  }
+
+  const removeGroup = (index: number) => {
+    const next = groups.filter((_, i) => i !== index).map((group) => group.join(', '))
+    onChange({ ...value, text: next.join(' ; ') })
   }
 
   return (
@@ -56,7 +70,7 @@ export function SearchBar({
           <TextInput
             value={value.text}
             onChangeText={(text) => onChange({ ...value, text })}
-            placeholder={placeholder}
+            placeholder={inputPlaceholder}
             placeholderTextColor="rgba(17,17,17,0.28)"
             style={{ flex: 1, ...fonts.medium, fontSize: 14, color: colors.black }}
           />
@@ -66,6 +80,22 @@ export function SearchBar({
             </Pressable>
           ) : null}
         </XStack>
+        <Pressable onPress={() => onChange({ ...value, apart: !value.apart })}>
+          <YStack
+            height={48}
+            paddingHorizontal={12}
+            borderRadius={16}
+            backgroundColor={value.apart ? colors.orange : colors.card}
+            alignItems="center"
+            justifyContent="center"
+            borderWidth={1}
+            borderColor={value.apart ? colors.orange : colors.border}
+          >
+            <Text style={{ ...fonts.bold, fontSize: 11, color: value.apart ? colors.white : colors.black }}>
+              À part
+            </Text>
+          </YStack>
+        </Pressable>
         {showFilters ? (
           <Pressable onPress={() => setOpen(true)}>
             <YStack
@@ -83,8 +113,29 @@ export function SearchBar({
           </Pressable>
         ) : null}
       </XStack>
+      <Text style={{ ...fonts.medium, fontSize: 11, color: colors.muted, paddingHorizontal: 4 }}>{hint}</Text>
 
-      {terms.length ? (
+      {value.apart && groups.length ? (
+        <XStack flexWrap="wrap" gap={6}>
+          {groups.map((group, index) => (
+            <Pressable key={`${group.join('-')}-${index}`} onPress={() => removeGroup(index)}>
+              <XStack
+                backgroundColor={colors.orangeSoft}
+                borderRadius={10}
+                paddingHorizontal={8}
+                paddingVertical={4}
+                alignItems="center"
+                gap={4}
+              >
+                <Text style={{ ...fonts.medium, fontSize: 11, color: colors.orange }}>{group.join(' · ')}</Text>
+                <X size={10} color={colors.orange} />
+              </XStack>
+            </Pressable>
+          ))}
+        </XStack>
+      ) : null}
+
+      {!value.apart && terms.length ? (
         <XStack flexWrap="wrap" gap={6}>
           {terms.map((term) => (
             <Pressable key={term} onPress={() => removeTerm(term)}>
@@ -236,7 +287,7 @@ function FilterSheet({
         </ScrollView>
         <XStack paddingHorizontal={20} paddingBottom={insets.bottom + 16} gap={10}>
           <Pressable
-            onPress={() => onChange({ ...EMPTY_SEARCH, text: value.text })}
+            onPress={() => onChange({ ...EMPTY_SEARCH, text: value.text, apart: value.apart })}
             style={{ flex: 1 }}
           >
             <YStack

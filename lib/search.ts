@@ -1,5 +1,6 @@
 export type SearchQuery = {
   text: string
+  apart: boolean
   priceMin: number | null
   priceMax: number | null
   roomsMin: number | null
@@ -11,6 +12,7 @@ export type SearchFeature = 'price' | 'budget' | 'rooms' | 'tags'
 
 export const EMPTY_SEARCH: SearchQuery = {
   text: '',
+  apart: false,
   priceMin: null,
   priceMax: null,
   roomsMin: null,
@@ -29,17 +31,46 @@ export const PRICE_PRESETS: { label: string; min: number | null; max: number | n
   { label: '50M+', min: 50_000_000, max: null },
 ]
 
+export function foldSearch(value: string) {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/œ/g, 'oe')
+    .replace(/['’]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 export function splitSearchTerms(text: string) {
   return text
     .split(',')
-    .map((term) => term.trim().toLowerCase())
+    .map((term) => foldSearch(term))
     .filter(Boolean)
+}
+
+export function parseSearchGroups(text: string, apart: boolean) {
+  const raw = text.trim()
+  if (!raw) return [] as string[][]
+  if (!apart) return [splitSearchTerms(raw.replace(/[()]/g, ' '))]
+  const chunks = raw
+    .split(/;|(?:\)\s*,\s*\()/)
+    .map((chunk) => splitSearchTerms(chunk.replace(/[()]/g, ' ')))
+    .filter((group) => group.length > 0)
+  return chunks.length ? chunks : [splitSearchTerms(raw.replace(/[()]/g, ' '))]
 }
 
 export function blobMatches(blob: string, terms: string[]) {
   if (!terms.length) return true
-  const hay = blob.toLowerCase()
+  const hay = foldSearch(blob)
   return terms.every((term) => hay.includes(term))
+}
+
+export function textMatches(blob: string, query: Pick<SearchQuery, 'text' | 'apart'>) {
+  const groups = parseSearchGroups(query.text, query.apart)
+  if (!groups.length) return true
+  if (query.apart) return groups.some((terms) => blobMatches(blob, terms))
+  return blobMatches(blob, groups[0] ?? [])
 }
 
 export function searchHasExtras(query: SearchQuery) {
@@ -58,10 +89,16 @@ export function searchIsActive(query: SearchQuery) {
 
 function inRange(value: number | null | undefined, min: number | null, max: number | null) {
   if (min == null && max == null) return true
-  const n = Number(value || 0)
+  if (value == null || Number.isNaN(Number(value))) return false
+  const n = Number(value)
   if (min != null && n < min) return false
   if (max != null && n > max) return false
   return true
+}
+
+function roomsBlob(rooms: number | null | undefined) {
+  if (rooms == null) return ''
+  return `${rooms} pieces ${rooms} piece ${rooms} pcs ${rooms}p`
 }
 
 export function matchOfferSearch(
@@ -77,6 +114,8 @@ export function matchOfferSearch(
     map_label: string | null
     price: number
     rooms: number | null
+    category?: string | null
+    visite_text?: string | null
   },
   query: SearchQuery
 ) {
@@ -87,21 +126,25 @@ export function matchOfferSearch(
     item.location,
     item.size_label,
     item.map_label,
+    item.category,
+    item.visite_text,
     item.phone,
+    item.price ? String(item.price) : '',
+    roomsBlob(item.rooms),
     ...(item.phones || []),
     ...(item.tags || []),
   ]
     .filter(Boolean)
     .join(' ')
-  if (!blobMatches(blob, splitSearchTerms(query.text))) return false
+  if (!textMatches(blob, query)) return false
   if (!inRange(item.price, query.priceMin, query.priceMax)) return false
   if (query.roomsMin != null || query.roomsMax != null) {
     if (item.rooms == null) return false
     if (!inRange(item.rooms, query.roomsMin, query.roomsMax)) return false
   }
   if (query.tags.length) {
-    const tags = (item.tags || []).map((tag) => tag.toLowerCase())
-    if (!query.tags.every((tag) => tags.some((entry) => entry.includes(tag.toLowerCase())))) return false
+    const tags = (item.tags || []).map((tag) => foldSearch(tag))
+    if (!query.tags.every((tag) => tags.some((entry) => entry.includes(foldSearch(tag))))) return false
   }
   return true
 }
@@ -119,13 +162,28 @@ export function matchDemandSearch(
   },
   query: SearchQuery
 ) {
-  const blob = [item.title, item.notes, item.location, item.category, item.contact?.name]
+  const blob = [
+    item.title,
+    item.notes,
+    item.location,
+    item.category,
+    item.contact?.name,
+    item.budget_min != null ? String(item.budget_min) : '',
+    item.budget_max != null ? String(item.budget_max) : '',
+    item.size_min != null ? `${item.size_min} m ${item.size_min} pieces` : '',
+  ]
     .filter(Boolean)
     .join(' ')
-  if (!blobMatches(blob, splitSearchTerms(query.text))) return false
-  const amount = item.budget_max || item.budget_min
-  if ((query.priceMin != null || query.priceMax != null) && amount == null) return false
-  if (!inRange(amount, query.priceMin, query.priceMax)) return false
+  if (!textMatches(blob, query)) return false
+  const amountMin = item.budget_min
+  const amountMax = item.budget_max
+  if (query.priceMin != null || query.priceMax != null) {
+    const lo = amountMin ?? amountMax
+    const hi = amountMax ?? amountMin
+    if (lo == null && hi == null) return false
+    if (query.priceMax != null && lo != null && lo > query.priceMax) return false
+    if (query.priceMin != null && hi != null && hi < query.priceMin) return false
+  }
   if (query.roomsMin != null || query.roomsMax != null) {
     if (item.size_min == null) return false
     if (!inRange(item.size_min, query.roomsMin, query.roomsMax)) return false
@@ -164,7 +222,7 @@ export function matchContactSearch(
   ]
     .filter(Boolean)
     .join(' ')
-  return blobMatches(blob, splitSearchTerms(query.text))
+  return textMatches(blob, query)
 }
 
 export function matchAppointmentSearch(
@@ -178,5 +236,5 @@ export function matchAppointmentSearch(
   query: SearchQuery
 ) {
   const blob = [item.title, item.place, item.notes, item.kind, item.contact?.name].filter(Boolean).join(' ')
-  return blobMatches(blob, splitSearchTerms(query.text))
+  return textMatches(blob, query)
 }
