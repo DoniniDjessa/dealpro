@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "933403079788",
+    "project_id": "dealpro-241f8",
+    "storage_bucket": "dealpro-241f8.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:933403079788:android:4cdd6abc1dc52d7070d449",
+        "android_client_info": {
+          "package_name": "com.rixxelstudio.dealpro"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDJvdgvPmE-Wb8pqzgtEgGxn4P1UC9AiLs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

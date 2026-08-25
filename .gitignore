@@ -10,6 +10,20 @@
 *.userosscache
 *.sln.docstates
 *.env
+*-firebase-adminsdk*.json
+.env.local
+.env*.local
+.expo/
+.tamagui/
+dist/
+web-build/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+expo-env.d.ts
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
