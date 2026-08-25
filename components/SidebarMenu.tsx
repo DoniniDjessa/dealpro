@@ -1,6 +1,6 @@
 import { usePathname, useRouter } from 'expo-router'
 import { DrawerContentScrollView, type DrawerContentComponentProps } from '@react-navigation/drawer'
-import { ChevronRight, LogOut, Settings } from 'lucide-react-native'
+import { ChevronRight, LogOut, Settings, Users } from 'lucide-react-native'
 import { Pressable } from 'react-native'
 import { Image } from 'expo-image'
 import { Separator, Text, XStack, YStack } from 'tamagui'
@@ -131,7 +131,7 @@ export function SidebarMenu(props: DrawerContentComponentProps) {
     {
       key: 'clients',
       label: 'Clients',
-      flat: 'flag',
+      lucide: Users,
       active: onClients,
       onPress: () => go('/(app)/(tabs)/clients'),
     },

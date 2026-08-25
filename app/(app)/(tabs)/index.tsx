@@ -3,7 +3,11 @@ import { SummaryBalloon } from '@/components/SummaryBalloon'
 import { OfferCard } from '@/components/DealCard'
 import { FlatIcon, type FlatIconName } from '@/components/FlatIcon'
 import { CashEntryModal } from '@/components/CashEntryModal'
+import { CategoryPickSheet } from '@/components/CategoryPickSheet'
 import { useFormDrawer } from '@/components/FormDrawer'
+import { useCategoryFilter } from '@/lib/filter'
+import { CATEGORIES, categoryMatches } from '@/lib/taxonomy'
+import type { Category } from '@/lib/types'
 import {
   formatFcfa,
   inPeriod,
@@ -17,7 +21,7 @@ import { useAppointments, useCashEntries, useContacts, useDemands, useOffers } f
 import { colors, fonts } from '@/lib/theme'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useRouter } from 'expo-router'
-import { ChevronLeft, ChevronRight, Plus, Trash2 } from 'lucide-react-native'
+import { ChevronLeft, ChevronRight, Plus, Trash2, Users } from 'lucide-react-native'
 import { useMemo, useState, type ReactNode } from 'react'
 import { Pressable, ScrollView, View } from 'react-native'
 import { Text, XStack, YStack } from 'tamagui'
@@ -37,9 +41,25 @@ export default function HomeScreen() {
   const demands = useDemands()
   const contacts = useContacts()
   const appointments = useAppointments()
+  const { setCategory } = useCategoryFilter()
   const [period, setPeriod] = useState<CashPeriod>('month')
   const [anchor, setAnchor] = useState(() => new Date())
   const [entryOpen, setEntryOpen] = useState(false)
+  const [categoryOpen, setCategoryOpen] = useState(false)
+  const offerCounts = useMemo(() => {
+    const byCat = CATEGORIES.reduce<Partial<Record<Category | 'all', number>>>((acc, cat) => {
+      acc[cat.id] = offers.items.filter((item) => categoryMatches(item.category, cat.id)).length
+      return acc
+    }, {})
+    byCat.all = offers.items.length
+    return byCat
+  }, [offers.items])
+
+  const openOffers = (next: Category | null) => {
+    setCategory(next)
+    setCategoryOpen(false)
+    router.push('/(app)/(tabs)/offers')
+  }
 
   const error = offers.error || cash.error || demands.error || contacts.error || appointments.error
   const loading =
@@ -194,10 +214,10 @@ export default function HomeScreen() {
             icon="tag"
             label="Biens"
             count={offers.items.length}
-            onPress={() => router.push('/(app)/(tabs)/offers')}
+            onPress={() => setCategoryOpen(true)}
           />
           <SummaryCard
-            icon="flag"
+            lucide={Users}
             label="Clients"
             count={clientCount}
             onPress={() => router.push('/(app)/(tabs)/clients')}
@@ -241,6 +261,12 @@ export default function HomeScreen() {
         )}
       </HomeCard>
 
+      <CategoryPickSheet
+        open={categoryOpen}
+        counts={offerCounts}
+        onClose={() => setCategoryOpen(false)}
+        onPick={openOffers}
+      />
       <CashEntryModal
         visible={entryOpen}
         userId={user?.id}
@@ -276,11 +302,13 @@ function StatBox({ label, value, accent }: { label: string; value: string; accen
 
 function SummaryCard({
   icon,
+  lucide: LucideIcon,
   label,
   count,
   onPress,
 }: {
-  icon: FlatIconName
+  icon?: FlatIconName
+  lucide?: typeof Users
   label: string
   count: number
   onPress: () => void
@@ -321,7 +349,7 @@ function SummaryCard({
           alignItems="center"
           justifyContent="center"
         >
-          <FlatIcon name={icon} size={18} />
+          {LucideIcon ? <LucideIcon size={18} color={colors.emerald} /> : icon ? <FlatIcon name={icon} size={18} /> : null}
         </XStack>
         <Text style={{ ...fonts.semibold, fontSize: 12, color: colors.black }}>{label}</Text>
       </YStack>

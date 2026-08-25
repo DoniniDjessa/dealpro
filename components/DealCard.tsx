@@ -3,7 +3,7 @@ import { Text, XStack, YStack } from 'tamagui'
 import { Star } from 'lucide-react-native'
 import { colors, fonts } from '@/lib/theme'
 import { formatFcfa } from '@/lib/format'
-import { categoryMeta, VERIFICATION_META } from '@/lib/taxonomy'
+import { categoryMeta } from '@/lib/taxonomy'
 import type { Demand, Offer } from '@/lib/types'
 import { SummaryBalloon } from '@/components/SummaryBalloon'
 import { CardActions } from '@/components/CardActions'
@@ -20,7 +20,6 @@ export function OfferCard({
   onDelete?: () => void
 }) {
   const cat = categoryMeta(item.category)
-  const verif = VERIFICATION_META[item.verification]
   return (
     <Pressable onPress={onPress}>
       <YStack
@@ -54,14 +53,6 @@ export function OfferCard({
               .join(' · ') || 'Lieu non renseigné'}
           </Text>
           {onEdit && onDelete ? <CardActions onEdit={onEdit} onDelete={onDelete} /> : null}
-        </XStack>
-        <XStack marginTop={12} gap={8} alignItems="center" flexWrap="wrap">
-          <YStack backgroundColor={colors.violetSoft} borderRadius={12} paddingHorizontal={10} paddingVertical={4}>
-            <Text style={{ ...fonts.semibold, fontSize: 11, color: verif.color }}>{verif.label}</Text>
-          </YStack>
-          <YStack backgroundColor={colors.bg} borderRadius={12} paddingHorizontal={10} paddingVertical={4}>
-            <Text style={{ ...fonts.medium, fontSize: 11, color: colors.muted }}>Fiabilité {item.reliability}/100</Text>
-          </YStack>
         </XStack>
       </YStack>
     </Pressable>
