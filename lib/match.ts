@@ -1,23 +1,17 @@
 import type { Demand, MatchReason, Offer } from '@/lib/types'
+import { locationPathMatches, parseLocationPath } from '@/lib/location-path'
 import { OPEN_PIPELINES, normalizeCategory } from '@/lib/taxonomy'
 
-function normalize(value: string | null | undefined) {
-  return (value || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9/ ]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-function locationOverlap(a: string | null | undefined, b: string | null | undefined) {
-  const left = normalize(a)
-  const right = normalize(b)
+function locationOverlap(offer: Offer, demand: Demand) {
+  const offerPath = offer.location_path?.length ? offer.location_path : parseLocationPath(offer.location)
+  const demandPath = demand.location_path?.length ? demand.location_path : parseLocationPath(demand.location)
+  if (offerPath.length && demandPath.length) {
+    return locationPathMatches(offerPath, demandPath.join(', ')) || locationPathMatches(demandPath, offerPath.join(', '))
+  }
+  const left = (offer.location || '').toLowerCase()
+  const right = (demand.location || '').toLowerCase()
   if (!left || !right) return false
-  const parts = [...left.split(/[/, ]+/), ...right.split(/[/, ]+/)].filter((p) => p.length >= 3)
-  if (left.includes(right) || right.includes(left)) return true
-  return parts.some((part) => left.includes(part) && right.includes(part))
+  return left.includes(right) || right.includes(left)
 }
 
 function priceFit(offer: Offer, demand: Demand): { points: number; label: string } | null {
@@ -41,7 +35,7 @@ export function scorePair(offer: Offer, demand: Demand) {
   if (normalizeCategory(offer.category) && normalizeCategory(offer.category) === normalizeCategory(demand.category)) {
     reasons.push({ code: 'category', label: 'Même catégorie', points: 40 })
   }
-  if (locationOverlap(offer.location, demand.location)) {
+  if (locationOverlap(offer, demand)) {
     reasons.push({ code: 'location', label: 'Zone compatible', points: 25 })
   }
   const price = priceFit(offer, demand)

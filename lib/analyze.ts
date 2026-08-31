@@ -1,50 +1,120 @@
+import { parseSpokenFcfa } from '@/lib/format'
+
 function parseCfaAmount(raw: string) {
+  const spoken = parseSpokenFcfa(raw)
+  if (spoken != null) return spoken
   const digits = raw.replace(/[^\d]/g, '')
   if (digits.length < 5) return null
   const n = Number.parseInt(digits, 10)
   return Number.isFinite(n) ? n : null
 }
 
+function isVisiteContext(text: string, index: number) {
+  const before = text.slice(Math.max(0, index - 36), index)
+  return /\bvisite\b/i.test(before)
+}
+
+function parseFrDigits(raw: string) {
+  const n = Number(String(raw).trim().replace(/\s/g, '').replace(',', '.'))
+  return Number.isFinite(n) ? n : null
+}
+
 export class TextAnalyzer {
   static extractPrice(text: string): { prix?: number; prixTexte?: string } {
-    for (const match of text.matchAll(/\bpx\s*[:\-]?\s*(\d[\d.\s,]*)/gi)) {
-      const prix = parseCfaAmount(match[1])
-      if (prix) return { prix, prixTexte: match[0] }
+    const candidates: { prix: number; prixTexte: string }[] = []
+    const add = (prix: number | null, prixTexte: string, index: number) => {
+      if (!prix || prix < 500) return
+      if (isVisiteContext(text, index)) return
+      candidates.push({ prix, prixTexte })
     }
 
-    let best: { prix: number; prixTexte: string } | null = null
+    for (const match of text.matchAll(/(\d+(?:[.,]\d+)?)\s*millions?\b/gi)) {
+      const n = parseFrDigits(match[1])
+      add(n != null ? Math.round(n * 1_000_000) : null, match[0], match.index ?? 0)
+    }
+    for (const match of text.matchAll(/(\d+(?:[.,]\d+)?)\s*milles?\b/gi)) {
+      const n = parseFrDigits(match[1])
+      add(n != null ? Math.round(n * 1_000) : null, match[0], match.index ?? 0)
+    }
+    for (const match of text.matchAll(/(\d+(?:[.,]\d+)?)\s*[mM](?![il]|[²2]|ètres?|etres?)(?:\s*(?:f(?:cfa|rs?|rancs?)?))?\b/g)) {
+      if (/million|mille/i.test(match[0])) continue
+      const n = parseFrDigits(match[1])
+      if (n == null || n >= 1000) continue
+      add(Math.round(n * 1_000_000), match[0], match.index ?? 0)
+    }
+    for (const match of text.matchAll(/(\d+(?:[.,]\d+)?)m(?![il]|[²2]|etres?)(?:\s*(?:fcfa|f\b))?/gi)) {
+      if (/million|mille|m[²2]|metre/i.test(match[0])) continue
+      const n = parseFrDigits(match[1])
+      if (n == null || n >= 1000) continue
+      add(Math.round(n * 1_000_000), match[0], match.index ?? 0)
+    }
+
+    for (const match of text.matchAll(/\bpx\s*[:\-]?\s*([^\n,;]{1,24})/gi)) {
+      const prix = parseCfaAmount(match[1])
+      add(prix, match[0], match.index ?? 0)
+    }
     for (const match of text.matchAll(/(\d[\d.\s,]*)\s*f(?:cfa|rs?|rancs?)?\b/gi)) {
-      const start = match.index ?? 0
-      const before = text.slice(Math.max(0, start - 28), start)
-      if (/\bvisite\b/i.test(before)) continue
-      const prix = parseCfaAmount(match[1])
-      if (!prix) continue
-      if (!best || prix > best.prix) best = { prix, prixTexte: match[0] }
+      add(parseCfaAmount(match[1]), match[0], match.index ?? 0)
     }
-    if (best) return best
+    for (const match of text.matchAll(/\bp(?:rix|x)\b\s*[:\-]?\s*([^\n,;]{1,24})/gi)) {
+      add(parseCfaAmount(match[1]), match[0], match.index ?? 0)
+    }
 
-    for (const match of text.matchAll(/\bp(?:rix|x)\b\s*[:\-]?\s*(\d[\d.\s,]*)/gi)) {
-      const prix = parseCfaAmount(match[1])
-      if (prix) return { prix, prixTexte: match[0] }
-    }
-    return {}
+    if (!candidates.length) return {}
+    candidates.sort((a, b) => b.prix - a.prix)
+    return candidates[0]
   }
 
   static extractVisite(text: string): { visite?: number; visiteTexte?: string; visiteTag?: string } {
     const patterns = [
-      /(?:FRAIS\s+DE\s+)?VISITE\s*:?\s*(\d+(?:[.,\s]\d{3})*)\s*(?:f|fr|frs|franc|francs|fcfa|franc\s+cfa)\b/gi,
-      /visite\s*(\d+)\s*(?:f|fr|frs|franc|francs|fcfa|franc\s+cfa)\b/gi,
-      /frais\s+de\s+visite\s*:?\s*(\d+(?:[.,\s]\d{3})*)\s*(?:f|fr|frs|franc|francs|fcfa|franc\s+cfa)\b/gi,
+      /(?:FRAIS\s+DE\s+)?VISITE\s*:?\s*(\d+(?:[.,]\d+)?)\s*(?:millions?|milles?|m\b|k\b|f|fr|frs|francs?|fcfa)?/gi,
+      /visite\s*(\d+(?:[.,]\d+)?)\s*(?:millions?|milles?|m\b|k\b|f|fr|frs|francs?|fcfa)?/gi,
+      /frais\s+de\s+visite\s*:?\s*(\d+(?:[.,]\d+)?)\s*(?:millions?|milles?|m\b|k\b|f|fr|frs|francs?|fcfa)?/gi,
       /visite[^\d]{0,10}(\d{3,6})/gi,
       /(\d{3,6})[^\d]{0,10}visite/gi,
     ]
     for (const pattern of patterns) {
       for (const execMatch of text.matchAll(pattern)) {
-        const visite = Number.parseInt(execMatch[1]?.replace(/[,\s]/g, '') || '0', 10)
-        if (visite > 0) return { visite, visiteTexte: execMatch[0], visiteTag: `v${visite}` }
+        const chunk = execMatch[0]
+        const visite = parseSpokenFcfa(chunk) || Number.parseInt(execMatch[1]?.replace(/[,\s]/g, '') || '0', 10)
+        if (visite > 0) return { visite, visiteTexte: chunk, visiteTag: `v${visite}` }
       }
     }
     return {}
+  }
+
+  static extractSize(text: string) {
+    const match = text.match(/(\d[\d\s.,]*)\s*(?:m²|m2|mètres?\s*carrés?|metres?\s*carres?)/i)
+    return match ? match[0].replace(/\s+/g, ' ').trim() : undefined
+  }
+
+  static extractVehicle(text: string) {
+    const now = new Date().getFullYear()
+    let year: number | undefined
+    for (const match of text.matchAll(/\b((?:19|20)\d{2})\b/g)) {
+      const n = Number(match[1])
+      if (n >= 1990 && n <= now + 1) {
+        year = n
+        break
+      }
+    }
+    const kmMatch = text.match(/(\d[\d\s.]{1,})\s*(?:km|kms)\b/i)
+    const mileage = kmMatch ? Number(kmMatch[1].replace(/[^\d]/g, '')) : undefined
+    const lower = text.toLowerCase()
+    const fuel = /diesel/.test(lower)
+      ? 'diesel'
+      : /hybride/.test(lower)
+        ? 'hybride'
+        : /[ée]lectrique/.test(lower)
+          ? 'electrique'
+          : /essence/.test(lower)
+            ? 'essence'
+            : undefined
+    return {
+      year,
+      mileage: mileage && Number.isFinite(mileage) ? mileage : undefined,
+      fuel,
+    }
   }
 
   static extractPhones(text: string): string[] {
@@ -157,9 +227,12 @@ export class TextAnalyzer {
   static analyzeText(text: string, type: string) {
     const priceAnalysis = this.extractPrice(text)
     const visiteAnalysis = this.extractVisite(text)
+    const vehicle = this.extractVehicle(text)
     return {
       ...priceAnalysis,
       ...visiteAnalysis,
+      ...vehicle,
+      sizeLabel: this.extractSize(text),
       telephones: this.extractPhones(text),
       liens: this.extractSocialLinks(text),
       nbPieces: this.extractRooms(text),

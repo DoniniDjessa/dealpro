@@ -33,7 +33,9 @@
           "tiktok",
           "snssdk1233",
           "snssdk1180",
-          "musically"
+          "musically",
+          "comgooglemaps",
+          "maps"
         ]
       }
     },
@@ -134,7 +136,8 @@
                 "com.zhiliaoapp.musically",
                 "com.ss.android.ugc.trill",
                 "com.whatsapp",
-                "com.twitter.android"
+                "com.twitter.android",
+                "com.google.android.apps.maps"
               ]
             }
           }

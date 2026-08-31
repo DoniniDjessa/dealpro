@@ -89,3 +89,17 @@ export async function openExternal(url: string) {
   if (native && (await tryOpen(native))) return
   await tryOpen(httpsUrl)
 }
+
+export async function openMaps(lat: number, lng: number, label?: string | null) {
+  const dest = `${lat},${lng}`
+  const named = encodeURIComponent(label?.trim() || dest)
+  const web = `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`
+  if (Platform.OS === 'android') {
+    if (await tryOpen(`google.navigation:q=${dest}`)) return
+    if (await tryOpen(`geo:${dest}?q=${dest}(${named})`)) return
+  } else {
+    if (await tryOpen(`comgooglemaps://?daddr=${dest}&directionsmode=driving`)) return
+    if (await tryOpen(`maps://?daddr=${dest}&dirflg=d`)) return
+  }
+  await tryOpen(web)
+}

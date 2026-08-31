@@ -6,4 +6,5 @@ export const tables = {
   matches: 'dealpro_matches',
   appointments: 'dealpro_appointments',
   cashEntries: 'dealpro_cash_entries',
+  places: 'dealpro_places',
 } as const

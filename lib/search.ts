@@ -1,3 +1,5 @@
+import { locationPathLabels } from '@/lib/location-path'
+
 export type SearchQuery = {
   text: string
   apart: boolean
@@ -107,6 +109,7 @@ export function matchOfferSearch(
     description: string | null
     raw_text: string | null
     location: string | null
+    location_path?: string[] | null
     phones: string[]
     phone: string | null
     tags: string[]
@@ -116,14 +119,18 @@ export function matchOfferSearch(
     rooms: number | null
     category?: string | null
     visite_text?: string | null
+    extracted?: Record<string, unknown> | null
   },
   query: SearchQuery
 ) {
+  const extras = item.extracted || {}
   const blob = [
     item.title,
     item.description,
     item.raw_text,
     item.location,
+    ...(item.location_path || []),
+    ...locationPathLabels(item.location_path || []),
     item.size_label,
     item.map_label,
     item.category,
@@ -131,6 +138,9 @@ export function matchOfferSearch(
     item.phone,
     item.price ? String(item.price) : '',
     roomsBlob(item.rooms),
+    extras.year != null ? String(extras.year) : '',
+    extras.mileage != null ? `${extras.mileage} km` : '',
+    extras.fuel != null ? String(extras.fuel) : '',
     ...(item.phones || []),
     ...(item.tags || []),
   ]
@@ -154,6 +164,7 @@ export function matchDemandSearch(
     title: string
     notes: string | null
     location: string | null
+    location_path?: string[] | null
     category: string
     contact?: { name?: string | null } | null
     budget_min: number | null
@@ -166,6 +177,8 @@ export function matchDemandSearch(
     item.title,
     item.notes,
     item.location,
+    ...(item.location_path || []),
+    ...locationPathLabels(item.location_path || []),
     item.category,
     item.contact?.name,
     item.budget_min != null ? String(item.budget_min) : '',
@@ -191,6 +204,114 @@ export function matchDemandSearch(
   return true
 }
 
+export type ContactFilterField = 'localisation' | 'secteur' | 'specialite'
+
+export type ContactFilters = {
+  localisation: string[]
+  secteur: string[]
+  specialite: string[]
+}
+
+export const EMPTY_CONTACT_FILTERS: ContactFilters = {
+  localisation: [],
+  secteur: [],
+  specialite: [],
+}
+
+export function contactFiltersActive(filters: ContactFilters) {
+  return Boolean(filters.localisation.length || filters.secteur.length || filters.specialite.length)
+}
+
+export function uniqueContactFieldValues(
+  contacts: {
+    localisation?: string | null
+    location_path?: string[] | null
+    location_quartiers?: string[] | null
+    secteur?: string | null
+    specialite?: string | null
+  }[],
+  field: ContactFilterField
+) {
+  const seen = new Set<string>()
+  const values: string[] = []
+  const add = (raw: string | null | undefined) => {
+    if (!raw?.trim()) return
+    for (const part of raw.split(/[,;/|]+/)) {
+      const value = part.trim()
+      const key = foldSearch(value)
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      values.push(value)
+    }
+  }
+  for (const contact of contacts) {
+    if (field === 'localisation') {
+      add(contact.localisation)
+      locationPathLabels(contact.location_path || []).forEach(add)
+      locationPathLabels(contact.location_quartiers || []).forEach(add)
+    } else {
+      add(contact[field])
+    }
+  }
+  return values.sort((a, b) => a.localeCompare(b, 'fr'))
+}
+
+export function toggleContactFilterValue(selected: string[], value: string) {
+  const key = foldSearch(value)
+  if (!key) return selected
+  if (selected.some((item) => foldSearch(item) === key)) {
+    return selected.filter((item) => foldSearch(item) !== key)
+  }
+  return [...selected, value.trim()]
+}
+
+export function matchContactIdentity(
+  item: { name: string; phone: string | null; phones?: string[] | null; tags?: string[] | null },
+  text: string
+) {
+  const terms = foldSearch(text).split(/[\s,;]+/).filter(Boolean)
+  if (!terms.length) return true
+  const phones = [item.phone, ...(item.phones || [])].filter(Boolean).join(' ')
+  const blob = foldSearch(`${item.name} ${phones} ${phones.replace(/\D/g, '')} ${(item.tags || []).join(' ')}`)
+  return terms.every((term) => blob.includes(term) || blob.replace(/\s/g, '').includes(term.replace(/\s/g, '')))
+}
+
+export function matchContactFieldFilter(value: string | null | undefined, selected: string[]) {
+  if (!selected.length) return true
+  if (!value?.trim()) return false
+  const hay = foldSearch(value)
+  return selected.some((item) => {
+    const query = foldSearch(item)
+    return Boolean(query && (hay.includes(query) || query.includes(hay)))
+  })
+}
+
+export function matchContactFilters(
+  item: {
+    localisation?: string | null
+    location_path?: string[] | null
+    location_quartiers?: string[] | null
+    secteur?: string | null
+    specialite?: string | null
+  },
+  filters: ContactFilters
+) {
+  const localisation = [
+    item.localisation,
+    ...(item.location_path || []),
+    ...(item.location_quartiers || []),
+    ...locationPathLabels(item.location_path || []),
+    ...locationPathLabels(item.location_quartiers || []),
+  ]
+    .filter(Boolean)
+    .join(' ')
+  return (
+    matchContactFieldFilter(localisation, filters.localisation) &&
+    matchContactFieldFilter(item.secteur, filters.secteur) &&
+    matchContactFieldFilter(item.specialite, filters.specialite)
+  )
+}
+
 export function matchContactSearch(
   item: {
     name: string
@@ -204,6 +325,7 @@ export function matchContactSearch(
     facebook: string | null
     instagram: string | null
     tiktok: string | null
+    tags?: string[] | null
   },
   text: string
 ) {
@@ -217,6 +339,7 @@ export function matchContactSearch(
     item.facebook,
     item.instagram,
     item.tiktok,
+    ...(item.tags || []),
     item.phone,
     ...(item.phones || []),
   ]

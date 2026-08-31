@@ -16,6 +16,7 @@ export function FormPanel({
   busy,
   disabled,
   saveLabel = 'Enregistrer',
+  confirmDelete = true,
 }: {
   title: string
   children: ReactNode
@@ -25,11 +26,16 @@ export function FormPanel({
   busy?: boolean
   disabled?: boolean
   saveLabel?: string
+  confirmDelete?: boolean
 }) {
   const insets = useSafeAreaInsets()
   const { confirm } = useAppDialog()
 
-  const confirmDelete = async () => {
+  const runDelete = async () => {
+    if (!confirmDelete) {
+      onDelete?.()
+      return
+    }
     const ok = await confirm({
       title: 'Supprimer ?',
       message: 'Cette action est définitive. Tu ne pourras pas la récupérer.',
@@ -74,7 +80,7 @@ export function FormPanel({
         <YStack padding={20} paddingTop={8} gap={10}>
           <PrimaryButton label={saveLabel} onPress={onSave} loading={busy} disabled={busy || disabled} />
           {onDelete ? (
-            <Pressable onPress={() => void confirmDelete()} disabled={busy}>
+            <Pressable onPress={() => void runDelete()} disabled={busy}>
               <YStack height={48} alignItems="center" justifyContent="center">
                 <Text style={{ ...fonts.semibold, color: colors.danger }}>Supprimer</Text>
               </YStack>

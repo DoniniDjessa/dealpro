@@ -1,13 +1,19 @@
 import { ScreenShell } from '@/components/ScreenShell'
 import { CardActions } from '@/components/CardActions'
-import { SimpleSearch } from '@/components/SimpleSearch'
+import { ContactSearch } from '@/components/ContactSearch'
 import { useFormDrawer } from '@/components/FormDrawer'
 import { useContacts, useDemands, useOffers } from '@/lib/hooks'
 import { deleteContact } from '@/lib/crm'
-import { matchContactSearch } from '@/lib/search'
+import {
+  EMPTY_CONTACT_FILTERS,
+  contactFiltersActive,
+  matchContactFilters,
+  matchContactIdentity,
+} from '@/lib/search'
+import { contactPlaceFromItem, formatContactPlace } from '@/lib/location-path'
 import { colors, fonts } from '@/lib/theme'
 import type { Contact } from '@/lib/types'
-import { ChevronDown, MapPin, MessageCircle, Phone } from 'lucide-react-native'
+import { ChevronDown, MapPin, MessageCircle, Phone, Star } from 'lucide-react-native'
 import { useMemo, useState } from 'react'
 import { Linking, Pressable } from 'react-native'
 import { Text, XStack, YStack } from 'tamagui'
@@ -37,9 +43,14 @@ export default function ContactsScreen() {
   const demands = useDemands()
   const { openForm, notifyChange } = useFormDrawer()
   const [query, setQuery] = useState('')
+  const [filters, setFilters] = useState(EMPTY_CONTACT_FILTERS)
   const [openId, setOpenId] = useState<string | null>(null)
 
-  const filtered = useMemo(() => items.filter((item) => matchContactSearch(item, query)), [items, query])
+  const filtered = useMemo(
+    () => items.filter((item) => matchContactIdentity(item, query) && matchContactFilters(item, filters)),
+    [items, query, filters]
+  )
+  const searchActive = Boolean(query.trim()) || contactFiltersActive(filters)
 
   const remove = async (id: string) => {
     await deleteContact(id)
@@ -49,15 +60,21 @@ export default function ContactsScreen() {
 
   return (
     <ScreenShell title="Contacts" loading={loading} error={error}>
-      <SimpleSearch value={query} onChange={setQuery} placeholder="Rechercher un contact…" />
+      <ContactSearch
+        contacts={items}
+        query={query}
+        onQueryChange={setQuery}
+        filters={filters}
+        onFiltersChange={setFilters}
+      />
       {filtered.length === 0 ? (
         <YStack alignItems="center" paddingVertical={48} gap={12}>
           <Text style={{ ...fonts.semibold, color: colors.muted, textAlign: 'center' }}>
-            {query.trim()
+            {searchActive
               ? 'Aucun contact trouvé pour cette recherche'
               : 'Relie un contact du répertoire à une offre, ou crée-le ici.'}
           </Text>
-          {!query.trim() ? (
+          {!searchActive ? (
             <Pressable onPress={() => openForm('contact')}>
               <Text style={{ ...fonts.bold, color: colors.emerald }}>Nouveau contact</Text>
             </Pressable>
@@ -67,6 +84,7 @@ export default function ContactsScreen() {
         filtered.map((item) => {
           const open = openId === item.id
           const phones = contactPhones(item)
+          const placeLine = formatContactPlace(contactPlaceFromItem(item), item.localisation)
           const linkedOffers = offers.items.filter((offer) => offer.contact_id === item.id)
           const linkedDemands = demands.items.filter((demand) => demand.contact_id === item.id)
           const socials = [
@@ -89,9 +107,23 @@ export default function ContactsScreen() {
             >
               <Pressable onPress={() => setOpenId(open ? null : item.id)}>
                 <XStack alignItems="center" justifyContent="space-between" gap={10}>
-                  <Text style={{ ...fonts.semibold, fontSize: 16, color: colors.black, flex: 1 }} numberOfLines={1}>
-                    {item.name}
-                  </Text>
+                  <YStack flex={1}>
+                    {placeLine ? (
+                      <Text style={{ ...fonts.regular, fontSize: 10, color: colors.muted }} numberOfLines={1}>
+                        {placeLine}
+                      </Text>
+                    ) : null}
+                    <XStack alignItems="center" gap={6}>
+                      <Text style={{ ...fonts.semibold, fontSize: 16, color: colors.black, flexShrink: 1 }} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                      {item.rating
+                        ? Array.from({ length: item.rating }).map((_, index) => (
+                            <Star key={index} size={12} color={colors.orange} fill={colors.orange} />
+                          ))
+                        : null}
+                    </XStack>
+                  </YStack>
                   <ChevronDown size={18} color={open ? colors.emerald : colors.muted} />
                 </XStack>
               </Pressable>
@@ -105,6 +137,15 @@ export default function ContactsScreen() {
                     <YStack alignSelf="flex-start" backgroundColor={colors.emeraldSoft} borderRadius={10} paddingHorizontal={8} paddingVertical={4}>
                       <Text style={{ ...fonts.semibold, fontSize: 11, color: colors.emerald }}>{item.secteur}</Text>
                     </YStack>
+                  ) : null}
+                  {item.tags?.length ? (
+                    <XStack flexWrap="wrap" gap={6}>
+                      {item.tags.map((tag) => (
+                        <YStack key={tag} backgroundColor={colors.orangeSoft} borderRadius={10} paddingHorizontal={8} paddingVertical={4}>
+                          <Text style={{ ...fonts.semibold, fontSize: 11, color: colors.orange }}>{tag}</Text>
+                        </YStack>
+                      ))}
+                    </XStack>
                   ) : null}
 
                   {phones.length ? (

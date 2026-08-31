@@ -8,9 +8,10 @@ import { useContacts } from '@/lib/hooks'
 import { tables } from '@/lib/db'
 import { supabase } from '@/lib/supabase'
 import { formatFcfa } from '@/lib/format'
-import { categoryMeta, PIPELINE_META, VERIFICATION_META } from '@/lib/taxonomy'
+import { formatLocationDisplay } from '@/lib/location-path'
 import { phoneLooksWhatsApp, phonesMatch, waDigits } from '@/lib/analyze'
-import { openableNetwork, openExternal, type OpenableNetwork } from '@/lib/openLink'
+import { categoryMeta, FUEL_OPTIONS, offerExtras, offerFormSpec, PIPELINE_META, VERIFICATION_META } from '@/lib/taxonomy'
+import { openableNetwork, openExternal, openMaps, type OpenableNetwork } from '@/lib/openLink'
 import type { Offer, SocialLink } from '@/lib/types'
 import { colors, fonts } from '@/lib/theme'
 import { MessageCircle, Phone, Star } from 'lucide-react-native'
@@ -66,6 +67,8 @@ export function OfferDetail({ item, onClose }: { item: Offer; onClose: () => voi
   const [important, setImportant] = useState(Boolean(item.important))
   const contact = contacts.find((entry) => entry.id === item.contact_id) || item.contact || null
   const cat = categoryMeta(item.category)
+  const spec = offerFormSpec(item.category)
+  const extras = offerExtras(item.extracted)
   const phones = offerPhones(item)
   const contactPhones = [
     ...phones,
@@ -113,11 +116,40 @@ export function OfferDetail({ item, onClose }: { item: Offer; onClose: () => voi
         </XStack>
       </YStack>
 
-      <Row label="LOCALISATION" value={item.location} />
-      <Row label="PIÈCES" value={item.rooms ? `${item.rooms}` : null} />
-      <Row label="SUPERFICIE" value={item.size_label} />
-      <Row label="MAP" value={item.map_label} />
-      <Row label="VISITE" value={item.visite ? formatFcfa(item.visite) : item.visite_text} />
+      <Row label="LOCALISATION" value={formatLocationDisplay(item.location_path, item.location)} />
+      {spec.rooms ? <Row label="PIÈCES" value={item.rooms ? `${item.rooms}` : null} /> : null}
+      {spec.size ? <Row label="SUPERFICIE" value={item.size_label} /> : null}
+      {spec.vehicle ? (
+        <>
+          <Row label="ANNÉE" value={extras.year ? String(extras.year) : null} />
+          <Row
+            label="KILOMÉTRAGE"
+            value={extras.mileage ? `${extras.mileage.toLocaleString('fr-FR')} km` : null}
+          />
+          <Row
+            label="CARBURANT"
+            value={FUEL_OPTIONS.find((option) => option.id === extras.fuel)?.label || extras.fuel}
+          />
+        </>
+      ) : null}
+      {item.map_lat != null && item.map_lng != null ? (
+        <YStack gap={8}>
+          <Text style={{ ...fonts.bold, fontSize: 10, color: colors.emerald, letterSpacing: 1.4 }}>MAP</Text>
+          {item.map_label ? (
+            <Text style={{ ...fonts.medium, fontSize: 15, color: colors.black }}>{item.map_label}</Text>
+          ) : null}
+          <Pressable onPress={() => void openMaps(item.map_lat as number, item.map_lng as number, item.map_label || item.location)}>
+            <YStack height={44} borderRadius={14} backgroundColor={colors.orangeSoft} alignItems="center" justifyContent="center">
+              <Text style={{ ...fonts.semibold, fontSize: 13, color: colors.orange }}>Ouvrir Google Maps · y aller</Text>
+            </YStack>
+          </Pressable>
+        </YStack>
+      ) : (
+        <Row label="MAP" value={item.map_label} />
+      )}
+      {spec.visite ? (
+        <Row label="VISITE" value={item.visite ? formatFcfa(item.visite) : item.visite_text} />
+      ) : null}
       <Row label="VÉRIFICATION" value={VERIFICATION_META[item.verification].label} />
       <Row label="PIPELINE" value={PIPELINE_META[item.pipeline].label} />
       <Row label="DESCRIPTION" value={item.description || item.raw_text} />

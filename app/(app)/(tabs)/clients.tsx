@@ -4,6 +4,7 @@ import { SimpleSearch } from '@/components/SimpleSearch'
 import { useFormDrawer } from '@/components/FormDrawer'
 import { useContacts, useDemands } from '@/lib/hooks'
 import { deleteContact } from '@/lib/crm'
+import { contactPlaceFromItem, formatContactPlace } from '@/lib/location-path'
 import { matchContactSearch } from '@/lib/search'
 import { colors, fonts } from '@/lib/theme'
 import type { Contact } from '@/lib/types'
@@ -69,6 +70,7 @@ export default function ClientsScreen() {
           const open = openId === item.id
           const phones = contactPhones(item)
           const linkedDemands = demands.items.filter((demand) => demand.contact_id === item.id)
+          const placeLine = formatContactPlace(contactPlaceFromItem(item), item.localisation)
 
           return (
             <YStack
@@ -84,6 +86,11 @@ export default function ClientsScreen() {
               <Pressable onPress={() => setOpenId(open ? null : item.id)}>
                 <XStack alignItems="center" justifyContent="space-between" gap={10}>
                   <YStack flex={1}>
+                    {placeLine ? (
+                      <Text style={{ ...fonts.regular, fontSize: 10, color: colors.muted }} numberOfLines={1}>
+                        {placeLine}
+                      </Text>
+                    ) : null}
                     <Text style={{ ...fonts.semibold, fontSize: 16, color: colors.black }} numberOfLines={1}>
                       {item.name}
                     </Text>

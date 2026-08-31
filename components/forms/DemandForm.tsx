@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Pressable } from 'react-native'
 import { Text, XStack, YStack } from 'tamagui'
 import { Field } from '@/components/Field'
@@ -10,11 +10,12 @@ import { tables } from '@/lib/db'
 import { supabase } from '@/lib/supabase'
 import { markClient, recomputeMatches, upsertContact } from '@/lib/crm'
 import { parseAmount } from '@/lib/format'
+import { locationPathHint, locationPathLabels, parseLocationPath } from '@/lib/location-path'
 import { useContacts } from '@/lib/hooks'
 import { cancelItemNotification } from '@/lib/notifications'
 import { parseReminder, reminderPayload } from '@/lib/reminder'
 import type { FormDraft } from '@/lib/share'
-import { CATEGORIES, normalizeCategory } from '@/lib/taxonomy'
+import { CATEGORIES, normalizeCategory, offerFormSpec } from '@/lib/taxonomy'
 import type { Category, Demand, DirectoryPerson } from '@/lib/types'
 import { colors, fonts } from '@/lib/theme'
 
@@ -48,6 +49,8 @@ export function DemandForm({
           : null
   )
   const [reminder, setReminder] = useState(() => parseReminder(item?.reminder, 'both'))
+  const spec = offerFormSpec(category)
+  const locationPath = useMemo(() => parseLocationPath(location), [location])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -86,6 +89,7 @@ export function DemandForm({
         title: title.trim(),
         category,
         location: location.trim() || null,
+        location_path: parseLocationPath(location),
         budget_min: budgetMin,
         budget_max: budgetMax,
         currency: 'XOF',
@@ -125,7 +129,12 @@ export function DemandForm({
       onDelete={item ? () => void remove() : undefined}
       busy={busy}
     >
-      <Field label="TITRE" placeholder="Cherche terrain Cocody / Bingerville" value={title} onChangeText={setTitle} />
+      <Field
+        label="TITRE"
+        placeholder={spec.titlePlaceholder}
+        value={title}
+        onChangeText={setTitle}
+      />
       <Text style={{ ...fonts.bold, fontSize: 10, color: colors.indigo, letterSpacing: 1.4, marginLeft: 4 }}>
         CATÉGORIE
       </Text>
@@ -145,10 +154,40 @@ export function DemandForm({
           </Pressable>
         ))}
       </XStack>
-      <Field label="ZONE" placeholder="Cocody / Bingerville" value={location} onChangeText={setLocation} />
-      <Field label="BUDGET MIN" placeholder="30000000" keyboardType="numeric" value={min} onChangeText={setMin} />
-      <Field label="BUDGET MAX" placeholder="50000000" keyboardType="numeric" value={max} onChangeText={setMax} />
-      <Field label="TAILLE MIN" placeholder="1000" keyboardType="numeric" value={sizeMin} onChangeText={setSizeMin} />
+      <Field label="ZONE" placeholder={spec.locationPlaceholder} value={location} onChangeText={setLocation} />
+      <Text style={{ ...fonts.medium, fontSize: 12, color: colors.muted, marginLeft: 4 }}>
+        Virgule = parent puis quartier. Ex. Cocody, Saint-Jean
+      </Text>
+      {locationPath.length > 1 ? (
+        <YStack gap={6} paddingHorizontal={4}>
+          <XStack flexWrap="wrap" gap={6} alignItems="center">
+            {locationPathLabels(locationPath).map((label, index) => (
+              <XStack key={`${label}-${index}`} alignItems="center" gap={6}>
+                {index > 0 ? (
+                  <Text style={{ ...fonts.medium, fontSize: 12, color: colors.muted }}>→</Text>
+                ) : null}
+                <YStack backgroundColor={colors.emeraldSoft} borderRadius={10} paddingHorizontal={8} paddingVertical={4}>
+                  <Text style={{ ...fonts.semibold, fontSize: 12, color: colors.emerald }}>{label}</Text>
+                </YStack>
+              </XStack>
+            ))}
+          </XStack>
+          {locationPathHint(locationPath) ? (
+            <Text style={{ ...fonts.medium, fontSize: 12, color: colors.emerald }}>{locationPathHint(locationPath)}</Text>
+          ) : null}
+        </YStack>
+      ) : null}
+      <Field label="BUDGET MIN" placeholder={spec.pricePlaceholder} value={min} onChangeText={setMin} />
+      <Field label="BUDGET MAX" placeholder={spec.pricePlaceholder} value={max} onChangeText={setMax} />
+      {spec.demandSize ? (
+        <Field
+          label={spec.demandSize.toUpperCase()}
+          placeholder={spec.demandSizePlaceholder}
+          keyboardType="numeric"
+          value={sizeMin}
+          onChangeText={setSizeMin}
+        />
+      ) : null}
       <Field label="NOTES" placeholder="Détails du client" value={notes} onChangeText={setNotes} />
       <ReminderPick
         value={reminder}

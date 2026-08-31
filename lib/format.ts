@@ -25,7 +25,50 @@ export function daysSince(iso: string | null | undefined) {
   return Math.floor((Date.now() - then) / 86_400_000)
 }
 
+function parseFrNumber(raw: string) {
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+  const spaced = trimmed.replace(/\s/g, '')
+  if (/^\d{1,3}(?:[.\s]\d{3})+$/.test(trimmed) || /^\d{1,3}(?:\.\d{3})+$/.test(spaced)) {
+    const n = Number(trimmed.replace(/[.\s]/g, ''))
+    return Number.isFinite(n) ? n : null
+  }
+  const n = Number(spaced.replace(',', '.'))
+  return Number.isFinite(n) ? n : null
+}
+
+/** 40 millions, 40 m, 40m, 500 milles, 15 mille, 200k → FCFA */
+export function parseSpokenFcfa(raw: string) {
+  const text = raw
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+  if (!text) return null
+
+  const take = (re: RegExp, factor: number) => {
+    const match = text.match(re)
+    if (!match?.[1]) return null
+    const n = parseFrNumber(match[1])
+    if (n == null) return null
+    return Math.round(n * factor)
+  }
+
+  return (
+    take(/(\d+(?:[.,]\d+)?)\s*millions?\b/, 1_000_000) ??
+    take(/(\d+(?:[.,]\d+)?)\s*milles?\b/, 1_000) ??
+    take(/(\d+(?:[.,]\d+)?)\s*mil\b/, 1_000) ??
+    take(/(\d+(?:[.,]\d+)?)m(?:illions?)?\b/, 1_000_000) ??
+    take(/(\d+(?:[.,]\d+)?)\s+m\b(?!\s*[2²]|etres?)/, 1_000_000) ??
+    take(/(\d+(?:[.,]\d+)?)\s*k\b/, 1_000) ??
+    null
+  )
+}
+
 export function parseAmount(raw: string) {
+  if (!raw.trim()) return 0
+  const spoken = parseSpokenFcfa(raw)
+  if (spoken != null) return spoken
   const digits = raw.replace(/[^\d]/g, '')
   const n = Number(digits)
   return Number.isFinite(n) ? n : 0

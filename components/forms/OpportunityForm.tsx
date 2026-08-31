@@ -4,7 +4,8 @@ import { Text, XStack, YStack } from 'tamagui'
 import * as Location from 'expo-location'
 import { Field } from '@/components/Field'
 import { FormPanel } from '@/components/FormPanel'
-import { ContactAttach } from '@/components/ContactAttach'
+import { useAppDialog } from '@/components/AppDialog'
+import { ContactTypeahead } from '@/components/ContactTypeahead'
 import { QuickContactSave } from '@/components/QuickContactSave'
 import { useAuth } from '@/lib/auth'
 import { tables } from '@/lib/db'
@@ -12,10 +13,13 @@ import { supabase } from '@/lib/supabase'
 import { createNamedContacts, recomputeMatches, upsertContact } from '@/lib/crm'
 import { TextAnalyzer, normalizePhone, phonesMatch, titleFromDescription } from '@/lib/analyze'
 import { parseAmount } from '@/lib/format'
+import { locationPathHint, locationPathLabels, parseLocationPath } from '@/lib/location-path'
 import { reliabilityFor } from '@/lib/match'
+import { fetchUserOffersForDuplicate, findOfferDuplicate, isListingLink } from '@/lib/offer-duplicate'
 import { useCategoryFilter } from '@/lib/filter'
 import { useContacts } from '@/lib/hooks'
-import { CATEGORIES, PIPELINE_META, VERIFICATION_META, categoryMeta, normalizeCategory } from '@/lib/taxonomy'
+import { CATEGORIES, FUEL_OPTIONS, PIPELINE_META, VERIFICATION_META, categoryMeta, normalizeCategory, offerExtras, offerFormSpec } from '@/lib/taxonomy'
+import { openMaps } from '@/lib/openLink'
 import type { OfferDraft } from '@/lib/share'
 import type { Category, DirectoryPerson, Offer, Pipeline, Source, Verification } from '@/lib/types'
 import { colors, fonts } from '@/lib/theme'
@@ -40,6 +44,7 @@ export function OpportunityForm({
   onSaved: () => void
 }) {
   const { user } = useAuth()
+  const { show, confirm } = useAppDialog()
   const { items: appContacts, reload: reloadContacts } = useContacts()
   const { category: filterCategory } = useCategoryFilter()
   const [raw, setRaw] = useState(item?.raw_text || item?.description || draft?.raw || '')
@@ -67,8 +72,14 @@ export function OpportunityForm({
     lng: item?.map_lng ?? null,
     label: item?.map_label || '',
   })
+  const extras = offerExtras(item?.extracted)
+  const [year, setYear] = useState(extras.year ? String(extras.year) : '')
+  const [mileage, setMileage] = useState(extras.mileage ? String(extras.mileage) : '')
+  const [fuel, setFuel] = useState(extras.fuel || '')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const spec = offerFormSpec(category)
+  const locationPath = useMemo(() => parseLocationPath(location), [location])
 
   const listedPhones = useMemo(() => splitPhones(phone), [phone])
   const unmatchedPhones = useMemo(
@@ -102,9 +113,15 @@ export function OpportunityForm({
         setPhone(analysis.telephones.join(', '))
       }
       if (!item && !price && analysis.prix) setPrice(String(analysis.prix))
-      if (!item && !rooms && analysis.nbPieces) setRooms(String(analysis.nbPieces))
+      if (!item && spec.rooms && !rooms && analysis.nbPieces) setRooms(String(analysis.nbPieces))
+      if (!item && spec.size && !sizeLabel && analysis.sizeLabel) setSizeLabel(analysis.sizeLabel)
       if (!item && !location && analysis.location) setLocation(analysis.location)
-      if (!item && !visite && analysis.visite) setVisite(String(analysis.visite))
+      if (!item && spec.visite && !visite && analysis.visite) setVisite(String(analysis.visite))
+      if (!item && spec.vehicle) {
+        if (!year && analysis.year) setYear(String(analysis.year))
+        if (!mileage && analysis.mileage) setMileage(String(analysis.mileage))
+        if (!fuel && analysis.fuel) setFuel(analysis.fuel)
+      }
 
       const pool = phonesTouched ? splitPhones(phone) : analysis.telephones
       if (personTouched) return
@@ -125,14 +142,16 @@ export function OpportunityForm({
     if (force || !price) {
       if (analysis.prix) setPrice(String(analysis.prix))
     }
-    if (force || !rooms) {
-      if (analysis.nbPieces) setRooms(String(analysis.nbPieces))
-    }
+    if (spec.rooms && (force || !rooms) && analysis.nbPieces) setRooms(String(analysis.nbPieces))
+    if (spec.size && (force || !sizeLabel) && analysis.sizeLabel) setSizeLabel(analysis.sizeLabel)
     if (force || !location) {
       if (analysis.location) setLocation(analysis.location)
     }
-    if (force || !visite) {
-      if (analysis.visite) setVisite(String(analysis.visite))
+    if (spec.visite && (force || !visite) && analysis.visite) setVisite(String(analysis.visite))
+    if (spec.vehicle) {
+      if ((force || !year) && analysis.year) setYear(String(analysis.year))
+      if ((force || !mileage) && analysis.mileage) setMileage(String(analysis.mileage))
+      if ((force || !fuel) && analysis.fuel) setFuel(analysis.fuel)
     }
     if (force || !phonesTouched) {
       if (analysis.telephones.length) {
@@ -168,6 +187,10 @@ export function OpportunityForm({
   const applyPerson = (next: DirectoryPerson | null) => {
     setPersonTouched(true)
     setPerson(next ? { ...next, fromApp: Boolean(next.fromApp) } : null)
+    if (next?.phone && !phonesTouched) {
+      setPhone(next.phone)
+      setPhonesTouched(true)
+    }
   }
 
   const saveQuickContacts = async (groups: { name: string; phones: string[] }[]) => {
@@ -190,16 +213,68 @@ export function OpportunityForm({
     }
   }
 
+  const resetCreateForm = () => {
+    setRaw('')
+    setLink('')
+    setTitle('')
+    setCategory(normalizeCategory(filterCategory || 'immobilier'))
+    setPrice('')
+    setLocation('')
+    setRooms('')
+    setSizeLabel('')
+    setVisite('')
+    setPhone('')
+    setImportant(false)
+    setVerification('unverified')
+    setPipeline('captured')
+    setPerson(null)
+    setPhonesTouched(false)
+    setPersonTouched(false)
+    setMap({ lat: null, lng: null, label: '' })
+    setYear('')
+    setMileage('')
+    setFuel('')
+    setQuickOpen(false)
+  }
+
   const save = async () => {
     if (!user?.id) return
     if (!raw.trim()) {
       setError('La description est requise.')
       return
     }
-    setBusy(true)
     setError(null)
+    const analysis = TextAnalyzer.analyzeText(`${raw} ${link}`.trim(), category)
+    const incomingLinks = [link.trim(), ...analysis.liens.map((entry) => entry.url)].filter(isListingLink)
+    const existing = await fetchUserOffersForDuplicate(user.id)
+    const dup = findOfferDuplicate(existing, {
+      description: raw,
+      links: incomingLinks,
+      excludeId: item?.id,
+    })
+    if (dup?.kind === 'link') {
+      const message = item
+        ? `Ce lien est déjà enregistré (« ${dup.offer.title} »). Rien n’a été enregistré.`
+        : `Ce lien est déjà enregistré (« ${dup.offer.title} »). Rien n’a été enregistré. Les champs sont vidés pour le prochain bien.`
+      show({
+        title: 'Lien déjà enregistré',
+        message,
+        actions: [{ label: 'OK', tone: 'primary' }],
+      })
+      setError(message)
+      if (!item) resetCreateForm()
+      return
+    }
+    if (dup?.kind === 'description') {
+      const ok = await confirm({
+        title: 'Description déjà enregistrée',
+        message: `« ${dup.offer.title} » a la même description. Enregistrer quand même ?`,
+        confirmLabel: 'Enregistrer quand même',
+      })
+      if (!ok) return
+    }
+    setBusy(true)
     try {
-      const analysis = TextAnalyzer.analyzeText(`${raw} ${link}`.trim(), category)
       const amount = parseAmount(price) || analysis.prix || 0
       const phones = listedPhones.length ? listedPhones : analysis.telephones
       const primaryPhone = phones[0] || null
@@ -216,6 +291,8 @@ export function OpportunityForm({
         : link.trim()
           ? [{ url: link.trim(), type: 'autre' }]
           : item?.links || []
+      const loc = location.trim() || analysis.location || null
+      const locationPathSaved = parseLocationPath(loc)
       const source: Source = link.trim() ? 'link' : 'paste'
       const payload = {
         user_id: user.id,
@@ -224,12 +301,13 @@ export function OpportunityForm({
         price: amount,
         currency: 'XOF',
         commission_rate: item?.commission_rate ?? 0.03,
-        location: location.trim() || analysis.location || null,
-        size_label: sizeLabel.trim() || null,
-        size_value: parseAmount(sizeLabel) || null,
-        rooms: rooms ? Number(rooms) || analysis.nbPieces || null : analysis.nbPieces || null,
-        visite: visite ? parseAmount(visite) : analysis.visite || null,
-        visite_text: analysis.visiteTexte || null,
+        location: loc,
+        location_path: locationPathSaved,
+        size_label: spec.size ? sizeLabel.trim() || analysis.sizeLabel || null : sizeLabel.trim() || null,
+        size_value: spec.size ? parseAmount(sizeLabel) || null : null,
+        rooms: spec.rooms ? (rooms ? Number(rooms) || analysis.nbPieces || null : analysis.nbPieces || null) : null,
+        visite: spec.visite ? (visite ? parseAmount(visite) : analysis.visite || null) : null,
+        visite_text: spec.visite ? analysis.visiteTexte || null : null,
         phones,
         links,
         tags: analysis.tags.length ? analysis.tags : item?.tags || [],
@@ -248,7 +326,13 @@ export function OpportunityForm({
         last_touched_at: new Date().toISOString(),
         important,
         updated_at: new Date().toISOString(),
-        extracted: analysis,
+        extracted: {
+          ...analysis,
+          location_path: locationPathSaved,
+          year: spec.vehicle ? Number(year) || analysis.year || null : null,
+          mileage: spec.vehicle ? Number(mileage.replace(/[^\d]/g, '')) || analysis.mileage || null : null,
+          fuel: spec.vehicle ? fuel || analysis.fuel || null : null,
+        },
       }
       const reliability = reliabilityFor({ ...(item as Offer), ...payload } as Offer)
       const { error: err } = item
@@ -277,6 +361,7 @@ export function OpportunityForm({
       onClose={onClose}
       onSave={() => void save()}
       onDelete={item ? () => void remove() : undefined}
+      confirmDelete={false}
       busy={busy}
       saveLabel={item ? 'Enregistrer' : 'Analyser et ajouter'}
     >
@@ -292,7 +377,7 @@ export function OpportunityForm({
       ) : null}
       <Field
         label="DESCRIPTION *"
-        placeholder="Colle ici l’annonce complète : prix, contacts, pièces…"
+        placeholder="Colle ici l’annonce complète : prix (40 millions, 40 m, 500 milles), contacts…"
         value={raw}
         onChangeText={setRaw}
         multiline
@@ -349,10 +434,98 @@ export function OpportunityForm({
           </Text>
         </YStack>
       )}
-      <Field label="TITRE" placeholder="Généré depuis la description si vide" value={title} onChangeText={setTitle} />
-      <Field label="PRIX (FCFA)" placeholder="extrait auto" keyboardType="numeric" value={price} onChangeText={setPrice} />
-      <Field label="NB PIÈCES" placeholder="3" keyboardType="numeric" value={rooms} onChangeText={setRooms} />
-      <Field label="LOCALISATION" placeholder="Bingerville, Cocody…" value={location} onChangeText={setLocation} />
+      <Field
+        label={spec.title}
+        placeholder={spec.titlePlaceholder}
+        value={title}
+        onChangeText={setTitle}
+      />
+      <Field
+        label="PRIX (FCFA)"
+        placeholder={spec.pricePlaceholder}
+        value={price}
+        onChangeText={setPrice}
+      />
+      {spec.vehicle ? (
+        <>
+          <XStack gap={8}>
+            <YStack flex={1}>
+              <Field label="ANNÉE" placeholder="2018" keyboardType="numeric" value={year} onChangeText={setYear} />
+            </YStack>
+            <YStack flex={1}>
+              <Field
+                label="KILOMÉTRAGE"
+                placeholder="85000"
+                keyboardType="numeric"
+                value={mileage}
+                onChangeText={setMileage}
+              />
+            </YStack>
+          </XStack>
+          <Text style={{ ...fonts.bold, fontSize: 10, color: colors.emerald, letterSpacing: 1.4, marginLeft: 4 }}>
+            CARBURANT
+          </Text>
+          <XStack flexWrap="wrap" gap={8}>
+            {FUEL_OPTIONS.map((option) => (
+              <Pressable key={option.id} onPress={() => setFuel(fuel === option.id ? '' : option.id)}>
+                <YStack
+                  backgroundColor={fuel === option.id ? colors.emerald : colors.card}
+                  borderRadius={14}
+                  paddingHorizontal={12}
+                  paddingVertical={8}
+                >
+                  <Text
+                    style={{
+                      ...fonts.semibold,
+                      fontSize: 12,
+                      color: fuel === option.id ? colors.white : colors.black,
+                    }}
+                  >
+                    {option.label}
+                  </Text>
+                </YStack>
+              </Pressable>
+            ))}
+          </XStack>
+        </>
+      ) : null}
+      {spec.rooms ? (
+        <Field
+          label={spec.roomsLabel || 'NB PIÈCES'}
+          placeholder="3"
+          keyboardType="numeric"
+          value={rooms}
+          onChangeText={setRooms}
+        />
+      ) : null}
+      <Field
+        label="LOCALISATION"
+        placeholder={spec.locationPlaceholder}
+        value={location}
+        onChangeText={setLocation}
+      />
+      <Text style={{ ...fonts.medium, fontSize: 12, color: colors.muted, marginLeft: 4 }}>
+        Virgule = parent puis quartier. Ex. Cocody, Saint-Jean
+      </Text>
+      {locationPath.length > 1 ? (
+        <YStack gap={6} paddingHorizontal={4}>
+          <XStack flexWrap="wrap" gap={6} alignItems="center">
+            {locationPathLabels(locationPath).map((label, index) => (
+              <XStack key={`${label}-${index}`} alignItems="center" gap={6}>
+                {index > 0 ? (
+                  <Text style={{ ...fonts.medium, fontSize: 12, color: colors.muted }}>→</Text>
+                ) : null}
+                <YStack backgroundColor={colors.emeraldSoft} borderRadius={10} paddingHorizontal={8} paddingVertical={4}>
+                  <Text style={{ ...fonts.semibold, fontSize: 12, color: colors.emerald }}>{label}</Text>
+                </YStack>
+              </XStack>
+            ))}
+          </XStack>
+          {locationPathHint(locationPath) ? (
+            <Text style={{ ...fonts.medium, fontSize: 12, color: colors.emerald }}>{locationPathHint(locationPath)}</Text>
+          ) : null}
+        </YStack>
+      ) : null}
       <Field
         label="MAP / ADRESSE"
         placeholder="Libellé du point GPS"
@@ -362,12 +535,28 @@ export function OpportunityForm({
       <Pressable onPress={() => void grabGps()}>
         <YStack height={44} borderRadius={14} backgroundColor={colors.emeraldSoft} alignItems="center" justifyContent="center">
           <Text style={{ ...fonts.semibold, fontSize: 13, color: colors.emerald }}>
-            {map.lat ? 'Position GPS enregistrée' : 'Prendre la position GPS'}
+            {map.lat ? 'Position GPS enregistrée · reprendre' : 'Prendre la position GPS'}
           </Text>
         </YStack>
       </Pressable>
-      <Field label="SUPERFICIE" placeholder="1500 m²" value={sizeLabel} onChangeText={setSizeLabel} />
-      <Field label="FRAIS DE VISITE" placeholder="5000" keyboardType="numeric" value={visite} onChangeText={setVisite} />
+      {map.lat != null && map.lng != null ? (
+        <Pressable onPress={() => void openMaps(map.lat as number, map.lng as number, map.label || location)}>
+          <YStack height={44} borderRadius={14} backgroundColor={colors.orangeSoft} alignItems="center" justifyContent="center">
+            <Text style={{ ...fonts.semibold, fontSize: 13, color: colors.orange }}>Ouvrir Google Maps · y aller</Text>
+          </YStack>
+        </Pressable>
+      ) : null}
+      {spec.size ? (
+        <Field
+          label={spec.sizeLabel || 'SUPERFICIE'}
+          placeholder={spec.sizePlaceholder || '1500 m²'}
+          value={sizeLabel}
+          onChangeText={setSizeLabel}
+        />
+      ) : null}
+      {spec.visite ? (
+        <Field label="FRAIS DE VISITE" placeholder="5 milles" value={visite} onChangeText={setVisite} />
+      ) : null}
       <Pressable onPress={() => setImportant((value) => !value)}>
         <XStack
           height={48}
@@ -405,12 +594,7 @@ export function OpportunityForm({
           </YStack>
         </Pressable>
       ) : null}
-      <ContactAttach
-        person={person}
-        onChange={applyPerson}
-        label="Contact du carnet"
-        hint={person?.fromApp ? 'Reconnu automatiquement' : 'Relier depuis le répertoire, ou enregistrer les numéros extraits'}
-      />
+      <ContactTypeahead contacts={appContacts} person={person} onChange={applyPerson} />
       <Text style={{ ...fonts.bold, fontSize: 10, color: colors.emerald, letterSpacing: 1.4, marginLeft: 4 }}>
         VÉRIFICATION
       </Text>

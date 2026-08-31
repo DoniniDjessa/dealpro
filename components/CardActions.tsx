@@ -7,14 +7,20 @@ import { XStack, YStack } from 'tamagui'
 export function CardActions({
   onEdit,
   onDelete,
+  confirm = true,
 }: {
   onEdit: () => void
   onDelete: () => void
+  confirm?: boolean
 }) {
-  const { confirm } = useAppDialog()
+  const { confirm: ask } = useAppDialog()
 
-  const confirmDelete = async () => {
-    const ok = await confirm({
+  const runDelete = async () => {
+    if (!confirm) {
+      onDelete()
+      return
+    }
+    const ok = await ask({
       title: 'Supprimer ?',
       message: 'Cette action est définitive. Tu ne pourras pas la récupérer.',
       confirmLabel: 'Supprimer',
@@ -46,7 +52,7 @@ export function CardActions({
       <Pressable
         onPress={(event) => {
           event.stopPropagation?.()
-          void confirmDelete()
+          void runDelete()
         }}
         hitSlop={6}
       >

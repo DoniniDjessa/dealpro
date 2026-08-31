@@ -28,7 +28,7 @@ export async function extractOfferFromText(text: string): Promise<ExtractedOffer
 
   const prompt = `Tu extraies une opportunité commerciale en JSON strict, sans markdown.
 Champs: title (court), category (immobilier|residences|terrains|auto|opportunite),
-price (nombre FCFA, 40 millions = 40000000), currency (XOF si FCFA), location, size_label, size_value (nombre),
+price (nombre FCFA : 40 millions / 40 m / 40m = 40000000, 500 milles / 15 mille = 500000 / 15000), currency (XOF si FCFA), location, size_label, size_value (nombre),
 phone, seller_name, description, source_url (si un lien est dans le texte).
 Null si inconnu. Texte:
 ${text}`

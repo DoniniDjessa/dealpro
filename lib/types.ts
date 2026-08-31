@@ -32,6 +32,8 @@ export type Contact = {
   phones: string[]
   device_contact_id: string | null
   localisation: string | null
+  location_path?: string[]
+  location_quartiers?: string[]
   secteur: string | null
   specialite: string | null
   whatsapp: string | null
@@ -39,6 +41,8 @@ export type Contact = {
   instagram: string | null
   tiktok: string | null
   notes: string | null
+  rating?: number | null
+  tags?: string[]
   kind: ContactKind
   created_at: string
   updated_at: string
@@ -60,6 +64,7 @@ export type Offer = {
   currency: string
   commission_rate: number
   location: string | null
+  location_path?: string[]
   size_label: string | null
   size_value: number | null
   rooms: number | null
@@ -96,6 +101,7 @@ export type Demand = {
   title: string
   category: Category
   location: string | null
+  location_path?: string[]
   budget_min: number | null
   budget_max: number | null
   currency: string
